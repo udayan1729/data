@@ -51,10 +51,10 @@
             gap: 40px; /* Space between 10Y and 30Y */
         }
 
-        /* COLOR UTILITIES */
+        /* COLOR UTILITIES - MATCHING YOUR REFERENCE PROJECT */
         .text-white { color: #ffffff; }
-        .text-green { color: #4ade80; } /* Bright Green */
-        .text-red   { color: #f87171; } /* Soft Red */
+        .text-green { color: #0ecb81; } /* Exact Binance Green */
+        .text-red   { color: #f6465d; } /* Exact Binance Red */
         .text-gold  { color: #FFD700; } /* Gold */
 
         /* POSITIONING */
@@ -117,6 +117,30 @@
         const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 
         // ---------------------------------------------------------
+        // SCREEN WAKE LOCK
+        // Prevents the screen from turning off
+        // ---------------------------------------------------------
+        let wakeLock = null;
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                }
+            } catch (err) {
+                console.log("Wake Lock ignored or not supported");
+            }
+        }
+        // Attempt to lock immediately
+        requestWakeLock();
+        
+        // Re-acquire lock if tab visibility changes (browser often releases it)
+        document.addEventListener('visibilitychange', async () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                await requestWakeLock();
+            }
+        });
+
+        // ---------------------------------------------------------
         // TIME LOGIC (Indian Standard Time)
         // Returns true if between 08:30 AM and 06:00 PM IST
         // ---------------------------------------------------------
@@ -136,7 +160,6 @@
 
         // ---------------------------------------------------------
         // 1. GENERIC FETCH (Yahoo Finance via Proxy)
-        // Used for Nifty, Nasdaq, TMB, 10Y, 30Y
         // ---------------------------------------------------------
         async function fetchYahooPrice(symbol, elementId, showDecimals, isGold = false) {
             const yahooURL = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d`;
@@ -164,36 +187,28 @@
                 element.classList.remove('loading');
 
                 // 2. DETERMINE COLOR
-                
-                // CASE A: Gold (Always Gold)
                 if (isGold) {
-                    // We manually set class to price + text-gold (ignoring small-price since gold is never small)
                     element.className = 'price text-gold';
                     return;
                 }
 
-                // CASE B: Standard Stocks (Nifty, Nasdaq, TMB, Yields)
+                // Check History (Manual Rolling 15m)
                 const now = Date.now();
                 if (!priceHistory[symbol]) priceHistory[symbol] = [];
                 priceHistory[symbol].push({ time: now, price: price });
                 
                 const oldEntry = priceHistory[symbol].find(entry => (now - entry.time) >= FIFTEEN_MIN_MS);
-                
-                // Clean up old memory
                 priceHistory[symbol] = priceHistory[symbol].filter(entry => (now - entry.time) < (20 * 60 * 1000));
 
-                // Reset colors, but keep 'price' and 'small-price' structure
                 element.classList.remove('text-white', 'text-green', 'text-red', 'text-gold');
                 
                 if (oldEntry) {
-                    // Compare current price vs 15 mins ago
                     if (price >= oldEntry.price) {
                         element.classList.add('text-green');
                     } else {
                         element.classList.add('text-red');
                     }
                 } else {
-                    // Less than 15 mins of data? Show White.
                     element.classList.add('text-white');
                 }
                 
@@ -204,10 +219,14 @@
 
         // ---------------------------------------------------------
         // 2. SPECIAL FETCH (Binance Direct API)
+        // MATCHING REFERENCE PROJECT LOGIC
         // ---------------------------------------------------------
         async function fetchBitcoinBinance() {
             try {
-                const klineURL = 'https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=2';
+                // To match your other project:
+                // Fetch 1m interval, limit 16.
+                // Index [0] is approx 15-16 mins ago.
+                const klineURL = 'https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=16';
                 const tickerURL = 'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT';
 
                 const [klineRes, tickerRes] = await Promise.all([
@@ -219,6 +238,8 @@
                 const tickerData = await tickerRes.json();
 
                 const currentPrice = parseFloat(tickerData.price);
+                
+                // Use [0][4] (Close price of the candle 16 mins ago)
                 const referencePrice = parseFloat(klineData[0][4]);
 
                 const element = document.getElementById('btc-price');
@@ -231,7 +252,7 @@
                 
                 element.classList.remove('loading', 'text-white', 'text-green', 'text-red');
 
-                if (currentPrice >= referencePrice) {
+                if (currentPrice > referencePrice) {
                     element.classList.add('text-green');
                 } else {
                     element.classList.add('text-red');
@@ -266,22 +287,17 @@
             const yieldWrapper = document.getElementById('yield-wrapper');
 
             if (isIST) {
-                // Show TMB, Hide Yields
                 tmbWrapper.style.display = 'block';
                 yieldWrapper.style.display = 'none';
-                
                 fetchYahooPrice('TMB.NS', 'tmb-price', true);
             } else {
-                // Hide TMB, Show Yields
                 tmbWrapper.style.display = 'none';
                 yieldWrapper.style.display = 'flex';
-                
-                // Fetch 10Y (^TNX) and 30Y (^TYX)
                 fetchYahooPrice('^TNX', 'yield-10-price', true); 
                 fetchYahooPrice('^TYX', 'yield-30-price', true);
             }
             
-            // 4. Bitcoin (Binance - Instant Color)
+            // 4. Bitcoin (Binance - Matches Reference Logic)
             fetchBitcoinBinance(); 
         }
 
