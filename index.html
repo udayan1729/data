@@ -35,21 +35,33 @@
     const L=async()=>{try{await navigator.wakeLock.request('screen')}catch(e){}};
     L(); document.addEventListener('visibilitychange',()=>document.visibilityState==='visible'&&L());
 
-    // Yahoo (Args: Symbol, ID, Decimals, SmallFont, Gold)
-    async function Y(s, i, dec, sm, gd) {
+    // Yahoo (Args: Symbol, ID, Decimals, SmallFont, Gold, IsIndex)
+    async function Y(s, i, dec, sm, gd, idx) {
         try {
             let r = await fetch('https://corsproxy.io/?'+encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${s}?interval=1d`));
             let d = await r.json(), M = d.chart.result[0].meta;
             let p = M.regularMarketPrice, prev = M.chartPreviousClose;
             let txt = p.toLocaleString('en-US',{minimumFractionDigits:dec?2:0, maximumFractionDigits:dec?2:0});
+            
+            // 1. Gold
             if(gd) return P(i, txt);
 
+            // 2. Index (Nasdaq/Nifty): Show % and color based on Prev Close
+            if(idx) {
+                let pct = ((p - prev) / prev) * 100;
+                let sign = pct >= 0 ? "+" : "";
+                // Insert HTML with small div for percentage
+                q(i).innerHTML = `${txt}<div class="sm">${sign}${pct.toFixed(2)}%</div>`;
+                // Color green if higher than prev close, red if lower
+                q(i).className = `p ${p >= prev ? 'g' : 'r'}`;
+                return;
+            }
+
+            // 3. Others: Color based on 15m history
             let n = Date.now();
             H[s] = (H[s]||[]).filter(x => n-x.t < 1.2e6); // Keep 20m
             H[s].push({t:n, p});
             let old = H[s].find(x => n-x.t >= 9e5); // Find 15m
-            
-            // Color: compare to 15m ago, or Prev Close if no history
             P(i, txt, `p ${sm?'sm':''} ${p>=(old?old.p:prev) ? 'g' : 'r'}`);
         } catch(e){}
     }
@@ -72,20 +84,21 @@
         let m=d.getHours()*60+d.getMinutes(), ist=m>=510&&m<=1080;
 
         P('l-tl', ist ? 'Nifty' : 'Nasdaq');
-        Y(ist ? '^NSEI' : '^IXIC', 'p-tl', 0, 0, 0);
+        
+        // Added last argument '1' to enable Index mode (Percentage + PrevClose Color)
+        Y(ist ? '^NSEI' : '^IXIC', 'p-tl', 0, 0, 0, 1);
+        
         Y('GC=F', 'p-gd', 0, 0, 1);
 
         q('bx-tmb').style.display = ist ? 'block' : 'none';
         q('bx-yld').style.display = ist ? 'none' : 'flex';
         
-        // TMB: Decimals=True, Small=False (Big)
         if(ist) Y('TMB.NS', 'p-tmb', 1, 0, 0); 
-        // Yields: Decimals=True, Small=True
         else { Y('^TNX', 'p-10', 1, 1, 0); Y('^TYX', 'p-30', 1, 1, 0); }
     }
 
-    setInterval(run, 5000); run(); // Slow loop
-    setInterval(B, 100);    B();   // Fast loop
+    setInterval(run, 5000); run();
+    setInterval(B, 100);    B();
 </script>
 </body>
 </html>
