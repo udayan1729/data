@@ -136,6 +136,7 @@
 
         // ---------------------------------------------------------
         // 1. GENERIC FETCH (Yahoo Finance via Proxy)
+        // Used for Nifty, Nasdaq, TMB, 10Y, 30Y
         // ---------------------------------------------------------
         async function fetchYahooPrice(symbol, elementId, showDecimals, isGold = false) {
             const yahooURL = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d`;
@@ -163,29 +164,36 @@
                 element.classList.remove('loading');
 
                 // 2. DETERMINE COLOR
+                
+                // CASE A: Gold (Always Gold)
                 if (isGold) {
-                    element.className = 'price text-gold'; // Keep base class
+                    // We manually set class to price + text-gold (ignoring small-price since gold is never small)
+                    element.className = 'price text-gold';
                     return;
                 }
 
-                // Check History
+                // CASE B: Standard Stocks (Nifty, Nasdaq, TMB, Yields)
                 const now = Date.now();
                 if (!priceHistory[symbol]) priceHistory[symbol] = [];
                 priceHistory[symbol].push({ time: now, price: price });
                 
                 const oldEntry = priceHistory[symbol].find(entry => (now - entry.time) >= FIFTEEN_MIN_MS);
+                
+                // Clean up old memory
                 priceHistory[symbol] = priceHistory[symbol].filter(entry => (now - entry.time) < (20 * 60 * 1000));
 
-                // Keep existing classes (like 'price' and 'small-price') but remove colors
+                // Reset colors, but keep 'price' and 'small-price' structure
                 element.classList.remove('text-white', 'text-green', 'text-red', 'text-gold');
                 
                 if (oldEntry) {
+                    // Compare current price vs 15 mins ago
                     if (price >= oldEntry.price) {
                         element.classList.add('text-green');
                     } else {
                         element.classList.add('text-red');
                     }
                 } else {
+                    // Less than 15 mins of data? Show White.
                     element.classList.add('text-white');
                 }
                 
