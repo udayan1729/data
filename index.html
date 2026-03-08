@@ -30,42 +30,31 @@
 <script>
     const H={}, q=i=>document.getElementById(i);
     const P=(i,t,c)=>{let e=q(i);e.innerText=t;if(c)e.className=c;};
-    
+
     // Wake Lock
     const L=async()=>{try{await navigator.wakeLock.request('screen')}catch(e){}};
     L(); document.addEventListener('visibilitychange',()=>document.visibilityState==='visible'&&L());
 
-    // Time Logic
-    const isIST=()=>{
-        let n=new Date(), u=n.getTime()+n.getTimezoneOffset()*6e4, i=new Date(u+198e5);
-        let m=i.getHours()*60+i.getMinutes();
-        return m>=510&&m<=1080;
-    };
-
-    // Yahoo Fetch (Sym, ID, Decimals, SmallFont, IsGold)
+    // Yahoo (Args: Symbol, ID, Decimals, SmallFont, Gold)
     async function Y(s, i, dec, sm, gd) {
         try {
             let r = await fetch('https://corsproxy.io/?'+encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${s}?interval=1d`));
             let d = await r.json(), M = d.chart.result[0].meta;
             let p = M.regularMarketPrice, prev = M.chartPreviousClose;
-            
-            // Format Text
             let txt = p.toLocaleString('en-US',{minimumFractionDigits:dec?2:0, maximumFractionDigits:dec?2:0});
-            if(gd) return P(i, txt); // Gold stays gold
+            if(gd) return P(i, txt);
 
-            // History Logic
-            let now = Date.now();
-            H[s] = (H[s]||[]).filter(x => now-x.t < 1.2e6); // Clean >20m
-            H[s].push({t:now, p});
-            let old = H[s].find(x => now-x.t >= 9e5); // Find >15m
+            let n = Date.now();
+            H[s] = (H[s]||[]).filter(x => n-x.t < 1.2e6); // Keep 20m
+            H[s].push({t:n, p});
+            let old = H[s].find(x => n-x.t >= 9e5); // Find 15m
             
-            // Color Logic: If no history, compare to Previous Close
-            let ref = old ? old.p : prev;
-            P(i, txt, `p ${sm?'sm':''} ${p>=ref ? 'g' : 'r'}`);
+            // Color: compare to 15m ago, or Prev Close if no history
+            P(i, txt, `p ${sm?'sm':''} ${p>=(old?old.p:prev) ? 'g' : 'r'}`);
         } catch(e){}
     }
 
-    // Binance Fetch
+    // Bitcoin (100ms)
     async function B() {
         try {
             let [k, t] = await Promise.all([
@@ -77,32 +66,26 @@
         } catch(e){}
     }
 
+    // Main Loop (5000ms)
     function run() {
-        let ist = isIST();
-        // Top Left
+        let n=new Date(), u=n.getTime()+n.getTimezoneOffset()*6e4+198e5, d=new Date(u);
+        let m=d.getHours()*60+d.getMinutes(), ist=m>=510&&m<=1080;
+
         P('l-tl', ist ? 'Nifty' : 'Nasdaq');
         Y(ist ? '^NSEI' : '^IXIC', 'p-tl', 0, 0, 0);
-        
-        // Top Right
         Y('GC=F', 'p-gd', 0, 0, 1);
 
-        // Bottom Left
         q('bx-tmb').style.display = ist ? 'block' : 'none';
         q('bx-yld').style.display = ist ? 'none' : 'flex';
-        if(ist) {
-            // TMB: Decimals=True, Small=False (Big)
-            Y('TMB.NS', 'p-tmb', 1, 0, 0); 
-        } else {
-            // Yields: Decimals=True, Small=True
-            Y('^TNX', 'p-10', 1, 1, 0);
-            Y('^TYX', 'p-30', 1, 1, 0);
-        }
         
-        // Bottom Right
-        B();
+        // TMB: Decimals=True, Small=False (Big)
+        if(ist) Y('TMB.NS', 'p-tmb', 1, 0, 0); 
+        // Yields: Decimals=True, Small=True
+        else { Y('^TNX', 'p-10', 1, 1, 0); Y('^TYX', 'p-30', 1, 1, 0); }
     }
-    
-    setInterval(run, 5000); run();
+
+    setInterval(run, 5000); run(); // Slow loop
+    setInterval(B, 100);    B();   // Fast loop
 </script>
 </body>
 </html>
