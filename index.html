@@ -17,33 +17,35 @@
 
         .corner-widget {
             position: fixed;
-            padding: 10px;
+            padding: 20px;
         }
 
         /* LABEL STYLING */
         .label {
-            font-size: 16px; /* Slightly larger label to match new size */
+            font-size: 20px;
             color: #888;
-            margin-bottom: 5px;
+            margin-bottom: 0px;
             text-transform: uppercase;
             font-weight: bold;
+            letter-spacing: 2px;
         }
 
         /* PRICE STYLING */
         .price {
-            /* INCREASED SIZE HERE */
-            font-size: 60px; 
+            /* MASSIVE FONT SIZE */
+            font-size: 96px; 
             font-weight: bold;
-            line-height: 1; /* Tighter spacing */
+            line-height: 1;
+            margin-top: -5px; /* Pull price up slightly closer to label */
         }
 
         /* POSITIONING */
-        #top-left { top: 20px; left: 20px; }
-        #top-right { top: 20px; right: 20px; text-align: right; }
-        #bottom-left { bottom: 20px; left: 20px; }
-        #bottom-right { bottom: 20px; right: 20px; text-align: right; }
+        #top-left { top: 10px; left: 20px; }
+        #top-right { top: 10px; right: 20px; text-align: right; }
+        #bottom-left { bottom: 10px; left: 20px; }
+        #bottom-right { bottom: 10px; right: 20px; text-align: right; }
 
-        .loading { color: #555; font-size: 30px; }
+        .loading { color: #444; font-size: 40px; }
     </style>
 </head>
 <body>
@@ -51,96 +53,118 @@
     <!-- TOP LEFT: NIFTY 50 -->
     <div id="top-left" class="corner-widget">
         <div class="label">Nifty</div>
-        <div id="nifty-price" class="price loading">Loading...</div>
+        <div id="nifty-price" class="price loading">...</div>
     </div>
 
     <!-- TOP RIGHT: GOLD -->
     <div id="top-right" class="corner-widget">
         <div class="label">Gold</div>
-        <div id="gold-price" class="price loading">Loading...</div>
+        <div id="gold-price" class="price loading">...</div>
     </div>
 
     <!-- BOTTOM LEFT: TMB -->
     <div id="bottom-left" class="corner-widget">
         <div class="label">TMB</div>
-        <div id="tmb-price" class="price loading">Loading...</div>
+        <div id="tmb-price" class="price loading">...</div>
     </div>
 
     <!-- BOTTOM RIGHT: BITCOIN -->
     <div id="bottom-right" class="corner-widget">
         <div class="label">Bitcoin</div>
-        <div id="btc-price" class="price loading">Loading...</div>
+        <div id="btc-price" class="price loading">...</div>
     </div>
 
     <script>
         // ---------------------------------------------------------
-        // FUNCTION TO FETCH DATA
-        // showDecimals: true = 123.45, false = 123
+        // 1. GENERIC FETCH (Yahoo Finance via Proxy)
+        // Used for Nifty, Gold, TMB
         // ---------------------------------------------------------
-        async function fetchStockPrice(symbol, elementId, showDecimals) {
-            
-            // Yahoo Finance API URL
+        async function fetchYahooPrice(symbol, elementId, showDecimals) {
             const yahooURL = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d`;
-            
-            // Proxy to bypass CORS
             const proxyURL = 'https://corsproxy.io/?' + encodeURIComponent(yahooURL);
 
             try {
                 const response = await fetch(proxyURL);
                 const data = await response.json();
                 
-                // Extract price
                 const result = data.chart.result[0];
                 const price = result.meta.regularMarketPrice;
 
-                // Setup formatting options
-                // REMOVED 'style: currency' so symbols ($/₹) do not appear
-                let formatOptions = {
-                    style: 'decimal' 
-                };
+                // Formatting: Decimal style (No currency symbol)
+                let formatOptions = { style: 'decimal' };
 
                 if (!showDecimals) {
-                    // Remove fractions for Nifty, Gold, BTC
                     formatOptions.maximumFractionDigits = 0;
                     formatOptions.minimumFractionDigits = 0;
                 } else {
-                    // Keep standard 2 decimals for TMB
                     formatOptions.maximumFractionDigits = 2;
                     formatOptions.minimumFractionDigits = 2;
                 }
                 
-                // Update HTML
                 const element = document.getElementById(elementId);
                 element.innerText = price.toLocaleString('en-US', formatOptions);
                 element.classList.remove('loading');
                 
             } catch (error) {
-                console.error("Error fetching " + symbol, error);
+                console.error("Yahoo Error: " + symbol, error);
             }
         }
 
         // ---------------------------------------------------------
-        // UPDATE FUNCTION
+        // 2. SPECIAL FETCH (Binance Direct API)
+        // Used specifically for Bitcoin to avoid Proxy/Rate limits
         // ---------------------------------------------------------
-        function updateDashboard() {
-            // Nifty: No Decimals (false)
-            fetchStockPrice('^NSEI', 'nifty-price', false); 
-            
-            // Gold: No Decimals (false)
-            fetchStockPrice('GC=F', 'gold-price', false);   
-            
-            // TMB: YES Decimals (true)
-            fetchStockPrice('TMB.NS', 'tmb-price', true);   
-            
-            // Bitcoin: No Decimals (false)
-            fetchStockPrice('BTC-USD', 'btc-price', false); 
+        async function fetchBitcoinBinance() {
+            // Binance public API (No API Key required for simple price)
+            const binanceURL = 'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT';
+
+            try {
+                const response = await fetch(binanceURL);
+                const data = await response.json();
+                
+                // Binance returns price as a string, e.g., "64100.00"
+                const price = parseFloat(data.price);
+
+                const element = document.getElementById('btc-price');
+                
+                // Format: No decimals, No Dollar sign
+                element.innerText = price.toLocaleString('en-US', {
+                    style: 'decimal',
+                    maximumFractionDigits: 0,
+                    minimumFractionDigits: 0
+                });
+                
+                element.classList.remove('loading');
+
+            } catch (error) {
+                console.error("Binance Error:", error);
+                // Fallback: If Binance fails, try the Yahoo method
+                fetchYahooPrice('BTC-USD', 'btc-price', false);
+            }
         }
 
-        // Run on load
+        // ---------------------------------------------------------
+        // MASTER UPDATE FUNCTION
+        // ---------------------------------------------------------
+        function updateDashboard() {
+            // 1. Nifty (Yahoo)
+            fetchYahooPrice('^NSEI', 'nifty-price', false); 
+            
+            // 2. Gold (Yahoo)
+            fetchYahooPrice('GC=F', 'gold-price', false);   
+            
+            // 3. TMB (Yahoo)
+            fetchYahooPrice('TMB.NS', 'tmb-price', true);   
+            
+            // 4. Bitcoin (Binance Direct)
+            fetchBitcoinBinance(); 
+        }
+
+        // Run immediately
         updateDashboard();
 
-        // Update every 10 seconds
-        setInterval(updateDashboard, 10000);
+        // Update every 5 seconds (Binance is fast, so we can update faster if we want, but 5-10s is safe)
+        setInterval(updateDashboard, 5000);
 
     </script>
 
