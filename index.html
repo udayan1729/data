@@ -8,7 +8,13 @@
     .w{position:fixed;padding:20px}
     .l{font-size:24px;color:#666;font-weight:bold;letter-spacing:2px;text-transform:uppercase}
     .p{font-size:96px;font-weight:bold;line-height:1;transition:color .5s;color:#fff}
+    
+    /* Yields/Smaller numbers */
     .sm{font-size:50px;margin-top:5px}
+    
+    /* Index Percentage: Smaller, Right Aligned */
+    .sub{font-size:30px;text-align:right;margin-top:5px;font-weight:normal;opacity:0.9}
+
     .row{display:flex;gap:40px}
     .g{color:#0ecb81!important} .r{color:#f6465d!important} .y{color:#FFD700!important}
     #tl{top:10px;left:30px} #tr{top:10px;right:30px;text-align:right}
@@ -46,18 +52,20 @@
             // 1. Gold
             if(gd) return P(i, txt);
 
-            // 2. Index (Nasdaq/Nifty): Show % and color based on Prev Close
+            // 2. Index (Nasdaq/Nifty)
             if(idx) {
                 let pct = ((p - prev) / prev) * 100;
                 let sign = pct >= 0 ? "+" : "";
-                // Insert HTML with small div for percentage
-                q(i).innerHTML = `${txt}<div class="sm">${sign}${pct.toFixed(2)}%</div>`;
-                // Color green if higher than prev close, red if lower
+                
+                // Added brackets, used .sub class for right alignment and size
+                q(i).innerHTML = `${txt}<div class="sub">(${sign}${pct.toFixed(2)}%)</div>`;
+                
+                // Color based on Prev Close
                 q(i).className = `p ${p >= prev ? 'g' : 'r'}`;
                 return;
             }
 
-            // 3. Others: Color based on 15m history
+            // 3. Others (History based color)
             let n = Date.now();
             H[s] = (H[s]||[]).filter(x => n-x.t < 1.2e6); // Keep 20m
             H[s].push({t:n, p});
@@ -66,7 +74,7 @@
         } catch(e){}
     }
 
-    // Bitcoin (100ms)
+    // Bitcoin
     async function B() {
         try {
             let [k, t] = await Promise.all([
@@ -78,16 +86,13 @@
         } catch(e){}
     }
 
-    // Main Loop (5000ms)
+    // Loop
     function run() {
         let n=new Date(), u=n.getTime()+n.getTimezoneOffset()*6e4+198e5, d=new Date(u);
         let m=d.getHours()*60+d.getMinutes(), ist=m>=510&&m<=1080;
 
         P('l-tl', ist ? 'Nifty' : 'Nasdaq');
-        
-        // Added last argument '1' to enable Index mode (Percentage + PrevClose Color)
-        Y(ist ? '^NSEI' : '^IXIC', 'p-tl', 0, 0, 0, 1);
-        
+        Y(ist ? '^NSEI' : '^IXIC', 'p-tl', 0, 0, 0, 1); // Index Mode = 1
         Y('GC=F', 'p-gd', 0, 0, 1);
 
         q('bx-tmb').style.display = ist ? 'block' : 'none';
