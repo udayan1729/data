@@ -22,64 +22,122 @@
 
         /* LABEL STYLING */
         .label {
-            font-size: 20px;
-            color: #888;
+            font-size: 24px;
+            color: #666;
             margin-bottom: 0px;
             text-transform: uppercase;
             font-weight: bold;
             letter-spacing: 2px;
         }
 
-        /* PRICE STYLING */
+        /* STANDARD HUGE PRICE (Nifty, Gold, BTC, TMB) */
         .price {
-            /* MASSIVE FONT SIZE */
             font-size: 96px; 
             font-weight: bold;
             line-height: 1;
-            margin-top: -5px; /* Pull price up slightly closer to label */
+            margin-top: -5px;
+            transition: color 0.5s ease;
         }
 
-        /* POSITIONING */
-        #top-left { top: 10px; left: 20px; }
-        #top-right { top: 10px; right: 20px; text-align: right; }
-        #bottom-left { bottom: 10px; left: 20px; }
-        #bottom-right { bottom: 10px; right: 20px; text-align: right; }
+        /* SMALLER PRICE (For 10Y/30Y Yields) */
+        .price.small-price {
+            font-size: 50px;
+            margin-top: 5px;
+        }
 
-        .loading { color: #444; font-size: 40px; }
+        /* YIELD CONTAINER (Side by Side) */
+        .yield-container {
+            display: flex;
+            gap: 40px; /* Space between 10Y and 30Y */
+        }
+
+        /* COLOR UTILITIES */
+        .text-white { color: #ffffff; }
+        .text-green { color: #4ade80; } /* Bright Green */
+        .text-red   { color: #f87171; } /* Soft Red */
+        .text-gold  { color: #FFD700; } /* Gold */
+
+        /* POSITIONING */
+        #top-left { top: 10px; left: 30px; }
+        #top-right { top: 10px; right: 30px; text-align: right; }
+        #bottom-left { bottom: 10px; left: 30px; }
+        #bottom-right { bottom: 10px; right: 30px; text-align: right; }
+
+        .loading { color: #333; font-size: 40px; }
     </style>
 </head>
 <body>
 
-    <!-- TOP LEFT: NIFTY 50 -->
+    <!-- TOP LEFT: NIFTY or NASDAQ -->
     <div id="top-left" class="corner-widget">
-        <div class="label">Nifty</div>
-        <div id="nifty-price" class="price loading">...</div>
+        <div id="label-tl" class="label">Loading...</div>
+        <div id="price-tl" class="price text-white loading">...</div>
     </div>
 
-    <!-- TOP RIGHT: GOLD -->
+    <!-- TOP RIGHT: GOLD (Always Gold Color) -->
     <div id="top-right" class="corner-widget">
         <div class="label">Gold</div>
-        <div id="gold-price" class="price loading">...</div>
+        <div id="gold-price" class="price text-gold loading">...</div>
     </div>
 
-    <!-- BOTTOM LEFT: TMB -->
+    <!-- BOTTOM LEFT: TMB or YIELDS -->
     <div id="bottom-left" class="corner-widget">
-        <div class="label">TMB</div>
-        <div id="tmb-price" class="price loading">...</div>
+        
+        <!-- MODE 1: TMB (Indian Time) -->
+        <div id="tmb-wrapper">
+            <div class="label">TMB</div>
+            <div id="tmb-price" class="price text-white loading">...</div>
+        </div>
+
+        <!-- MODE 2: YIELDS (US Time) -->
+        <div id="yield-wrapper" class="yield-container" style="display: none;">
+            <div>
+                <div class="label">10Y</div>
+                <div id="yield-10-price" class="price small-price text-white loading">...</div>
+            </div>
+            <div>
+                <div class="label">30Y</div>
+                <div id="yield-30-price" class="price small-price text-white loading">...</div>
+            </div>
+        </div>
+
     </div>
 
     <!-- BOTTOM RIGHT: BITCOIN -->
     <div id="bottom-right" class="corner-widget">
         <div class="label">Bitcoin</div>
-        <div id="btc-price" class="price loading">...</div>
+        <div id="btc-price" class="price text-white loading">...</div>
     </div>
 
     <script>
         // ---------------------------------------------------------
-        // 1. GENERIC FETCH (Yahoo Finance via Proxy)
-        // Used for Nifty, Gold, TMB
+        // STATE MANAGEMENT
         // ---------------------------------------------------------
-        async function fetchYahooPrice(symbol, elementId, showDecimals) {
+        const priceHistory = {}; 
+        const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+
+        // ---------------------------------------------------------
+        // TIME LOGIC (Indian Standard Time)
+        // Returns true if between 08:30 AM and 06:00 PM IST
+        // ---------------------------------------------------------
+        function isIndianMarketTime() {
+            const now = new Date();
+            const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+            const ist = new Date(utc + (3600000 * 5.5));
+
+            const hours = ist.getHours();
+            const minutes = ist.getMinutes();
+            const totalMinutes = (hours * 60) + minutes;
+
+            // 8:30 AM = 510 minutes
+            // 6:00 PM = 18:00 = 1080 minutes
+            return totalMinutes >= 510 && totalMinutes <= 1080;
+        }
+
+        // ---------------------------------------------------------
+        // 1. GENERIC FETCH (Yahoo Finance via Proxy)
+        // ---------------------------------------------------------
+        async function fetchYahooPrice(symbol, elementId, showDecimals, isGold = false) {
             const yahooURL = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d`;
             const proxyURL = 'https://corsproxy.io/?' + encodeURIComponent(yahooURL);
 
@@ -90,9 +148,10 @@
                 const result = data.chart.result[0];
                 const price = result.meta.regularMarketPrice;
 
-                // Formatting: Decimal style (No currency symbol)
+                const element = document.getElementById(elementId);
+                
+                // 1. FORMAT NUMBER
                 let formatOptions = { style: 'decimal' };
-
                 if (!showDecimals) {
                     formatOptions.maximumFractionDigits = 0;
                     formatOptions.minimumFractionDigits = 0;
@@ -100,10 +159,35 @@
                     formatOptions.maximumFractionDigits = 2;
                     formatOptions.minimumFractionDigits = 2;
                 }
-                
-                const element = document.getElementById(elementId);
                 element.innerText = price.toLocaleString('en-US', formatOptions);
                 element.classList.remove('loading');
+
+                // 2. DETERMINE COLOR
+                if (isGold) {
+                    element.className = 'price text-gold'; // Keep base class
+                    return;
+                }
+
+                // Check History
+                const now = Date.now();
+                if (!priceHistory[symbol]) priceHistory[symbol] = [];
+                priceHistory[symbol].push({ time: now, price: price });
+                
+                const oldEntry = priceHistory[symbol].find(entry => (now - entry.time) >= FIFTEEN_MIN_MS);
+                priceHistory[symbol] = priceHistory[symbol].filter(entry => (now - entry.time) < (20 * 60 * 1000));
+
+                // Keep existing classes (like 'price' and 'small-price') but remove colors
+                element.classList.remove('text-white', 'text-green', 'text-red', 'text-gold');
+                
+                if (oldEntry) {
+                    if (price >= oldEntry.price) {
+                        element.classList.add('text-green');
+                    } else {
+                        element.classList.add('text-red');
+                    }
+                } else {
+                    element.classList.add('text-white');
+                }
                 
             } catch (error) {
                 console.error("Yahoo Error: " + symbol, error);
@@ -112,34 +196,41 @@
 
         // ---------------------------------------------------------
         // 2. SPECIAL FETCH (Binance Direct API)
-        // Used specifically for Bitcoin to avoid Proxy/Rate limits
         // ---------------------------------------------------------
         async function fetchBitcoinBinance() {
-            // Binance public API (No API Key required for simple price)
-            const binanceURL = 'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT';
-
             try {
-                const response = await fetch(binanceURL);
-                const data = await response.json();
-                
-                // Binance returns price as a string, e.g., "64100.00"
-                const price = parseFloat(data.price);
+                const klineURL = 'https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=2';
+                const tickerURL = 'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT';
+
+                const [klineRes, tickerRes] = await Promise.all([
+                    fetch(klineURL),
+                    fetch(tickerURL)
+                ]);
+
+                const klineData = await klineRes.json();
+                const tickerData = await tickerRes.json();
+
+                const currentPrice = parseFloat(tickerData.price);
+                const referencePrice = parseFloat(klineData[0][4]);
 
                 const element = document.getElementById('btc-price');
                 
-                // Format: No decimals, No Dollar sign
-                element.innerText = price.toLocaleString('en-US', {
+                element.innerText = currentPrice.toLocaleString('en-US', {
                     style: 'decimal',
                     maximumFractionDigits: 0,
                     minimumFractionDigits: 0
                 });
                 
-                element.classList.remove('loading');
+                element.classList.remove('loading', 'text-white', 'text-green', 'text-red');
+
+                if (currentPrice >= referencePrice) {
+                    element.classList.add('text-green');
+                } else {
+                    element.classList.add('text-red');
+                }
 
             } catch (error) {
                 console.error("Binance Error:", error);
-                // Fallback: If Binance fails, try the Yahoo method
-                fetchYahooPrice('BTC-USD', 'btc-price', false);
             }
         }
 
@@ -147,23 +238,49 @@
         // MASTER UPDATE FUNCTION
         // ---------------------------------------------------------
         function updateDashboard() {
-            // 1. Nifty (Yahoo)
-            fetchYahooPrice('^NSEI', 'nifty-price', false); 
+            const isIST = isIndianMarketTime();
             
-            // 2. Gold (Yahoo)
-            fetchYahooPrice('GC=F', 'gold-price', false);   
+            // 1. Top Left Logic (Nifty vs Nasdaq)
+            const tlLabel = document.getElementById('label-tl');
+            if (isIST) {
+                tlLabel.innerText = "Nifty";
+                fetchYahooPrice('^NSEI', 'price-tl', false); 
+            } else {
+                tlLabel.innerText = "Nasdaq";
+                fetchYahooPrice('^IXIC', 'price-tl', false);
+            }
+
+            // 2. Gold (Always Gold Color)
+            fetchYahooPrice('GC=F', 'gold-price', false, true);   
             
-            // 3. TMB (Yahoo)
-            fetchYahooPrice('TMB.NS', 'tmb-price', true);   
+            // 3. Bottom Left Logic (TMB vs Yields)
+            const tmbWrapper = document.getElementById('tmb-wrapper');
+            const yieldWrapper = document.getElementById('yield-wrapper');
+
+            if (isIST) {
+                // Show TMB, Hide Yields
+                tmbWrapper.style.display = 'block';
+                yieldWrapper.style.display = 'none';
+                
+                fetchYahooPrice('TMB.NS', 'tmb-price', true);
+            } else {
+                // Hide TMB, Show Yields
+                tmbWrapper.style.display = 'none';
+                yieldWrapper.style.display = 'flex';
+                
+                // Fetch 10Y (^TNX) and 30Y (^TYX)
+                fetchYahooPrice('^TNX', 'yield-10-price', true); 
+                fetchYahooPrice('^TYX', 'yield-30-price', true);
+            }
             
-            // 4. Bitcoin (Binance Direct)
+            // 4. Bitcoin (Binance - Instant Color)
             fetchBitcoinBinance(); 
         }
 
         // Run immediately
         updateDashboard();
 
-        // Update every 5 seconds (Binance is fast, so we can update faster if we want, but 5-10s is safe)
+        // Update every 5 seconds
         setInterval(updateDashboard, 5000);
 
     </script>
