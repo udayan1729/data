@@ -1,313 +1,108 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Market Dashboard</title>
-    <style>
-        body {
-            background-color: #000000;
-            color: #ffffff;
-            font-family: 'Courier New', Courier, monospace; 
-            margin: 0;
-            height: 100vh;
-            width: 100vw;
-            overflow: hidden;
-        }
-
-        .corner-widget {
-            position: fixed;
-            padding: 20px;
-        }
-
-        /* LABEL STYLING */
-        .label {
-            font-size: 24px;
-            color: #666;
-            margin-bottom: 0px;
-            text-transform: uppercase;
-            font-weight: bold;
-            letter-spacing: 2px;
-        }
-
-        /* STANDARD HUGE PRICE (Nifty, Gold, BTC, TMB) */
-        .price {
-            font-size: 96px; 
-            font-weight: bold;
-            line-height: 1;
-            margin-top: -5px;
-            transition: color 0.5s ease;
-        }
-
-        /* SMALLER PRICE (For 10Y/30Y Yields) */
-        .price.small-price {
-            font-size: 50px;
-            margin-top: 5px;
-        }
-
-        /* YIELD CONTAINER (Side by Side) */
-        .yield-container {
-            display: flex;
-            gap: 40px; /* Space between 10Y and 30Y */
-        }
-
-        /* COLOR UTILITIES - MATCHING YOUR REFERENCE PROJECT */
-        .text-white { color: #ffffff; }
-        .text-green { color: #0ecb81; } /* Exact Binance Green */
-        .text-red   { color: #f6465d; } /* Exact Binance Red */
-        .text-gold  { color: #FFD700; } /* Gold */
-
-        /* POSITIONING */
-        #top-left { top: 10px; left: 30px; }
-        #top-right { top: 10px; right: 30px; text-align: right; }
-        #bottom-left { bottom: 10px; left: 30px; }
-        #bottom-right { bottom: 10px; right: 30px; text-align: right; }
-
-        .loading { color: #333; font-size: 40px; }
-    </style>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Market</title>
+<style>
+    body{background:#000;color:#fff;font-family:'Courier New',monospace;margin:0;height:100vh;overflow:hidden}
+    .w{position:fixed;padding:20px}
+    .l{font-size:24px;color:#666;font-weight:bold;letter-spacing:2px;text-transform:uppercase}
+    .p{font-size:96px;font-weight:bold;line-height:1;transition:color .5s;color:#fff}
+    .sm{font-size:50px;margin-top:5px}
+    .row{display:flex;gap:40px}
+    .g{color:#0ecb81!important} .r{color:#f6465d!important} .y{color:#FFD700!important}
+    #tl{top:10px;left:30px} #tr{top:10px;right:30px;text-align:right}
+    #bl{bottom:10px;left:30px} #br{bottom:10px;right:30px;text-align:right}
+</style>
 </head>
 <body>
-
-    <!-- TOP LEFT: NIFTY or NASDAQ -->
-    <div id="top-left" class="corner-widget">
-        <div id="label-tl" class="label">Loading...</div>
-        <div id="price-tl" class="price text-white loading">...</div>
-    </div>
-
-    <!-- TOP RIGHT: GOLD (Always Gold Color) -->
-    <div id="top-right" class="corner-widget">
-        <div class="label">Gold</div>
-        <div id="gold-price" class="price text-gold loading">...</div>
-    </div>
-
-    <!-- BOTTOM LEFT: TMB or YIELDS -->
-    <div id="bottom-left" class="corner-widget">
-        
-        <!-- MODE 1: TMB (Indian Time) -->
-        <div id="tmb-wrapper">
-            <div class="label">TMB</div>
-            <div id="tmb-price" class="price text-white loading">...</div>
+    <div id="tl" class="w"><div id="l-tl" class="l">...</div><div id="p-tl" class="p">...</div></div>
+    <div id="tr" class="w"><div class="l">Gold</div><div id="p-gd" class="p y">...</div></div>
+    <div id="bl" class="w">
+        <div id="bx-tmb"><div class="l">TMB</div><div id="p-tmb" class="p">...</div></div>
+        <div id="bx-yld" class="row" style="display:none">
+            <div><div class="l">10Y</div><div id="p-10" class="p sm">...</div></div>
+            <div><div class="l">30Y</div><div id="p-30" class="p sm">...</div></div>
         </div>
-
-        <!-- MODE 2: YIELDS (US Time) -->
-        <div id="yield-wrapper" class="yield-container" style="display: none;">
-            <div>
-                <div class="label">10Y</div>
-                <div id="yield-10-price" class="price small-price text-white loading">...</div>
-            </div>
-            <div>
-                <div class="label">30Y</div>
-                <div id="yield-30-price" class="price small-price text-white loading">...</div>
-            </div>
-        </div>
-
     </div>
+    <div id="br" class="w"><div class="l">Bitcoin</div><div id="p-btc" class="p">...</div></div>
 
-    <!-- BOTTOM RIGHT: BITCOIN -->
-    <div id="bottom-right" class="corner-widget">
-        <div class="label">Bitcoin</div>
-        <div id="btc-price" class="price text-white loading">...</div>
-    </div>
+<script>
+    const H={}, q=i=>document.getElementById(i);
+    const P=(i,t,c)=>{let e=q(i);e.innerText=t;if(c)e.className=c;};
+    
+    // Wake Lock
+    const L=async()=>{try{await navigator.wakeLock.request('screen')}catch(e){}};
+    L(); document.addEventListener('visibilitychange',()=>document.visibilityState==='visible'&&L());
 
-    <script>
-        // ---------------------------------------------------------
-        // STATE MANAGEMENT
-        // ---------------------------------------------------------
-        const priceHistory = {}; 
-        const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+    // Time Logic
+    const isIST=()=>{
+        let n=new Date(), u=n.getTime()+n.getTimezoneOffset()*6e4, i=new Date(u+198e5);
+        let m=i.getHours()*60+i.getMinutes();
+        return m>=510&&m<=1080;
+    };
 
-        // ---------------------------------------------------------
-        // SCREEN WAKE LOCK
-        // Prevents the screen from turning off
-        // ---------------------------------------------------------
-        let wakeLock = null;
-        async function requestWakeLock() {
-            try {
-                if ('wakeLock' in navigator) {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                }
-            } catch (err) {
-                console.log("Wake Lock ignored or not supported");
-            }
-        }
-        // Attempt to lock immediately
-        requestWakeLock();
+    // Yahoo Fetch (Sym, ID, Decimals, SmallFont, IsGold)
+    async function Y(s, i, dec, sm, gd) {
+        try {
+            let r = await fetch('https://corsproxy.io/?'+encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${s}?interval=1d`));
+            let d = await r.json(), M = d.chart.result[0].meta;
+            let p = M.regularMarketPrice, prev = M.chartPreviousClose;
+            
+            // Format Text
+            let txt = p.toLocaleString('en-US',{minimumFractionDigits:dec?2:0, maximumFractionDigits:dec?2:0});
+            if(gd) return P(i, txt); // Gold stays gold
+
+            // History Logic
+            let now = Date.now();
+            H[s] = (H[s]||[]).filter(x => now-x.t < 1.2e6); // Clean >20m
+            H[s].push({t:now, p});
+            let old = H[s].find(x => now-x.t >= 9e5); // Find >15m
+            
+            // Color Logic: If no history, compare to Previous Close
+            let ref = old ? old.p : prev;
+            P(i, txt, `p ${sm?'sm':''} ${p>=ref ? 'g' : 'r'}`);
+        } catch(e){}
+    }
+
+    // Binance Fetch
+    async function B() {
+        try {
+            let [k, t] = await Promise.all([
+                fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=16').then(r=>r.json()),
+                fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT').then(r=>r.json())
+            ]);
+            let p = parseFloat(t.price), ref = parseFloat(k[0][4]);
+            P('p-btc', Math.round(p).toLocaleString(), `p ${p>ref?'g':'r'}`);
+        } catch(e){}
+    }
+
+    function run() {
+        let ist = isIST();
+        // Top Left
+        P('l-tl', ist ? 'Nifty' : 'Nasdaq');
+        Y(ist ? '^NSEI' : '^IXIC', 'p-tl', 0, 0, 0);
         
-        // Re-acquire lock if tab visibility changes (browser often releases it)
-        document.addEventListener('visibilitychange', async () => {
-            if (wakeLock !== null && document.visibilityState === 'visible') {
-                await requestWakeLock();
-            }
-        });
+        // Top Right
+        Y('GC=F', 'p-gd', 0, 0, 1);
 
-        // ---------------------------------------------------------
-        // TIME LOGIC (Indian Standard Time)
-        // Returns true if between 08:30 AM and 06:00 PM IST
-        // ---------------------------------------------------------
-        function isIndianMarketTime() {
-            const now = new Date();
-            const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-            const ist = new Date(utc + (3600000 * 5.5));
-
-            const hours = ist.getHours();
-            const minutes = ist.getMinutes();
-            const totalMinutes = (hours * 60) + minutes;
-
-            // 8:30 AM = 510 minutes
-            // 6:00 PM = 18:00 = 1080 minutes
-            return totalMinutes >= 510 && totalMinutes <= 1080;
+        // Bottom Left
+        q('bx-tmb').style.display = ist ? 'block' : 'none';
+        q('bx-yld').style.display = ist ? 'none' : 'flex';
+        if(ist) {
+            // TMB: Decimals=True, Small=False (Big)
+            Y('TMB.NS', 'p-tmb', 1, 0, 0); 
+        } else {
+            // Yields: Decimals=True, Small=True
+            Y('^TNX', 'p-10', 1, 1, 0);
+            Y('^TYX', 'p-30', 1, 1, 0);
         }
-
-        // ---------------------------------------------------------
-        // 1. GENERIC FETCH (Yahoo Finance via Proxy)
-        // ---------------------------------------------------------
-        async function fetchYahooPrice(symbol, elementId, showDecimals, isGold = false) {
-            const yahooURL = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d`;
-            const proxyURL = 'https://corsproxy.io/?' + encodeURIComponent(yahooURL);
-
-            try {
-                const response = await fetch(proxyURL);
-                const data = await response.json();
-                
-                const result = data.chart.result[0];
-                const price = result.meta.regularMarketPrice;
-
-                const element = document.getElementById(elementId);
-                
-                // 1. FORMAT NUMBER
-                let formatOptions = { style: 'decimal' };
-                if (!showDecimals) {
-                    formatOptions.maximumFractionDigits = 0;
-                    formatOptions.minimumFractionDigits = 0;
-                } else {
-                    formatOptions.maximumFractionDigits = 2;
-                    formatOptions.minimumFractionDigits = 2;
-                }
-                element.innerText = price.toLocaleString('en-US', formatOptions);
-                element.classList.remove('loading');
-
-                // 2. DETERMINE COLOR
-                if (isGold) {
-                    element.className = 'price text-gold';
-                    return;
-                }
-
-                // Check History (Manual Rolling 15m)
-                const now = Date.now();
-                if (!priceHistory[symbol]) priceHistory[symbol] = [];
-                priceHistory[symbol].push({ time: now, price: price });
-                
-                const oldEntry = priceHistory[symbol].find(entry => (now - entry.time) >= FIFTEEN_MIN_MS);
-                priceHistory[symbol] = priceHistory[symbol].filter(entry => (now - entry.time) < (20 * 60 * 1000));
-
-                element.classList.remove('text-white', 'text-green', 'text-red', 'text-gold');
-                
-                if (oldEntry) {
-                    if (price >= oldEntry.price) {
-                        element.classList.add('text-green');
-                    } else {
-                        element.classList.add('text-red');
-                    }
-                } else {
-                    element.classList.add('text-white');
-                }
-                
-            } catch (error) {
-                console.error("Yahoo Error: " + symbol, error);
-            }
-        }
-
-        // ---------------------------------------------------------
-        // 2. SPECIAL FETCH (Binance Direct API)
-        // MATCHING REFERENCE PROJECT LOGIC
-        // ---------------------------------------------------------
-        async function fetchBitcoinBinance() {
-            try {
-                // To match your other project:
-                // Fetch 1m interval, limit 16.
-                // Index [0] is approx 15-16 mins ago.
-                const klineURL = 'https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=16';
-                const tickerURL = 'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT';
-
-                const [klineRes, tickerRes] = await Promise.all([
-                    fetch(klineURL),
-                    fetch(tickerURL)
-                ]);
-
-                const klineData = await klineRes.json();
-                const tickerData = await tickerRes.json();
-
-                const currentPrice = parseFloat(tickerData.price);
-                
-                // Use [0][4] (Close price of the candle 16 mins ago)
-                const referencePrice = parseFloat(klineData[0][4]);
-
-                const element = document.getElementById('btc-price');
-                
-                element.innerText = currentPrice.toLocaleString('en-US', {
-                    style: 'decimal',
-                    maximumFractionDigits: 0,
-                    minimumFractionDigits: 0
-                });
-                
-                element.classList.remove('loading', 'text-white', 'text-green', 'text-red');
-
-                if (currentPrice > referencePrice) {
-                    element.classList.add('text-green');
-                } else {
-                    element.classList.add('text-red');
-                }
-
-            } catch (error) {
-                console.error("Binance Error:", error);
-            }
-        }
-
-        // ---------------------------------------------------------
-        // MASTER UPDATE FUNCTION
-        // ---------------------------------------------------------
-        function updateDashboard() {
-            const isIST = isIndianMarketTime();
-            
-            // 1. Top Left Logic (Nifty vs Nasdaq)
-            const tlLabel = document.getElementById('label-tl');
-            if (isIST) {
-                tlLabel.innerText = "Nifty";
-                fetchYahooPrice('^NSEI', 'price-tl', false); 
-            } else {
-                tlLabel.innerText = "Nasdaq";
-                fetchYahooPrice('^IXIC', 'price-tl', false);
-            }
-
-            // 2. Gold (Always Gold Color)
-            fetchYahooPrice('GC=F', 'gold-price', false, true);   
-            
-            // 3. Bottom Left Logic (TMB vs Yields)
-            const tmbWrapper = document.getElementById('tmb-wrapper');
-            const yieldWrapper = document.getElementById('yield-wrapper');
-
-            if (isIST) {
-                tmbWrapper.style.display = 'block';
-                yieldWrapper.style.display = 'none';
-                fetchYahooPrice('TMB.NS', 'tmb-price', true);
-            } else {
-                tmbWrapper.style.display = 'none';
-                yieldWrapper.style.display = 'flex';
-                fetchYahooPrice('^TNX', 'yield-10-price', true); 
-                fetchYahooPrice('^TYX', 'yield-30-price', true);
-            }
-            
-            // 4. Bitcoin (Binance - Matches Reference Logic)
-            fetchBitcoinBinance(); 
-        }
-
-        // Run immediately
-        updateDashboard();
-
-        // Update every 5 seconds
-        setInterval(updateDashboard, 5000);
-
-    </script>
-
+        
+        // Bottom Right
+        B();
+    }
+    
+    setInterval(run, 5000); run();
+</script>
 </body>
 </html>
