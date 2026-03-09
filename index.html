@@ -46,9 +46,13 @@
     L(); document.addEventListener('visibilitychange',()=>document.visibilityState==='visible'&&L());
 
     // Yahoo (Args: Symbol, ID, Decimals, SmallFont, Gold, IsIndex)
+    // Yahoo (Args: Symbol, ID, Decimals, SmallFont, Gold, IsIndex)
     async function Y(s, i, dec, sm, gd, idx) {
         try {
-            let r = await fetch('https://corsproxy.io/?'+encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${s}?interval=1d`));
+            // Added &t=${Date.now()} to the Yahoo URL to prevent proxy caching
+            let targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${s}?interval=1d&t=${Date.now()}`;
+            let r = await fetch('https://corsproxy.io/?' + encodeURIComponent(targetUrl));
+            
             let d = await r.json(), M = d.chart.result[0].meta;
             let p = M.regularMarketPrice, prev = M.chartPreviousClose;
             let txt = p.toLocaleString('en-US',{minimumFractionDigits:dec?2:0, maximumFractionDigits:dec?2:0});
