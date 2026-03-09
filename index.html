@@ -22,7 +22,7 @@
     #tl{top:10px;left:30px;cursor:pointer;user-select:none;} 
     #tr{top:10px;right:30px;text-align:right;cursor:pointer;user-select:none;}
     #bl{bottom:10px;left:30px;cursor:pointer;user-select:none;} 
-    #br{bottom:10px;right:30px;text-align:right}
+    #br{bottom:10px;right:30px;text-align:right;cursor:pointer;user-select:none;}
 </style>
 </head>
 <body>
@@ -36,7 +36,8 @@
             <div><div class="l">30Y</div><div id="p-30" class="p sm">...</div></div>
         </div>
     </div>
-    <div id="br" class="w"><div class="l">Bitcoin</div><div id="p-btc" class="p">...</div></div>
+    <!-- Added ID l-btc to toggle text -->
+    <div id="br" class="w"><div id="l-btc" class="l">Bitcoin</div><div id="p-btc" class="p">...</div></div>
 
 <script>
     const H={}, q=i=>document.getElementById(i);
@@ -66,11 +67,9 @@
                 let subText = "";
                 
                 if (mode === 1) {
-                    // For Nifty/Nasdaq: Value outside, percentage inside brackets
                     let pct = (diff / prev * 100).toFixed(2);
                     subText = `${sign}${diff.toFixed(2)} (${sign}${pct}%)`;
                 } else {
-                    // For TMB: Just absolute change inside brackets
                     subText = `(${sign}${diff.toFixed(2)})`;
                 }
                 
@@ -88,9 +87,29 @@
         } catch(e){}
     }
 
-    // Bitcoin
+    // State trackers: mTR=false is Gold (default), mBR=false is BTC Price (default)
+    let mTL = null, mBL = null, mTR = false, mBR = false;
+    let btcDom = '...';
+
+    // CoinGecko Fetch for Dominance
+    async function getDom(){ 
+        try{
+            let r = await fetch('https://api.coingecko.com/api/v3/global');
+            let data = await r.json();
+            btcDom = (parseFloat(data.data.market_cap_percentage.btc) * 1.04325).toFixed(2) + '%';
+            if(mBR) P('p-btc', btcDom); // Instantly update view if active
+        }catch(e){ console.log("CG Fetch Err", e); } 
+    }
+
+    // Bitcoin & Dominance
     async function B() {
+        if (mBR) {
+            P('l-btc', 'BTC Dom');
+            P('p-btc', btcDom, 'p y'); // Use 'p y' for yellow or just 'p' for white
+            return;
+        }
         try {
+            P('l-btc', 'Bitcoin');
             let [k, t] = await Promise.all([
                 fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=16').then(r=>r.json()),
                 fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT').then(r=>r.json())
@@ -106,16 +125,13 @@
         return m>=510&&m<=1080;
     };
 
-    // State trackers: mTR=false is Gold (default), mTR=true is USD/INR
-    let mTL = null, mBL = null, mTR = false;
-
     // Loop
     function run() {
         let ist = getIST();
         let stateTL = mTL !== null ? mTL : ist;
         let stateBL = mBL !== null ? mBL : ist;
 
-        // Top Left: Nifty / Nasdaq (Mode 1 = Abs & Percentage)
+        // Top Left: Nifty / Nasdaq
         P('l-tl', stateTL ? 'Nifty' : 'Nasdaq');
         Y(stateTL ? '^NSEI' : '^IXIC', 'p-tl', 0, 0, 0, 1); 
         
@@ -127,7 +143,6 @@
         q('bx-tmb').style.display = stateBL ? 'block' : 'none';
         q('bx-yld').style.display = stateBL ? 'none' : 'flex';
         
-        // TMB updated here (Mode 2 = Absolute Change)
         if(stateBL) Y('TMB.NS', 'p-tmb', 1, 0, 0, 2); 
         else { Y('^TNX', 'p-10', 1, 1, 0); Y('^TYX', 'p-30', 1, 1, 0); }
     }
@@ -151,8 +166,16 @@
         run(); 
     };
 
+    q('br').onclick = () => { 
+        mBR = !mBR; 
+        q('p-btc').innerText = '...'; 
+        B(); 
+    };
+
+    // Initializations and Timers
     setInterval(run, 30000); run();
     setInterval(B, 1000);    B();
+    setInterval(getDom, 30000); getDom(); // Fetch CG every 60s
 </script>
 </body>
 </html>
