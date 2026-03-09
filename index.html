@@ -20,14 +20,15 @@
     
     /* Added cursor pointers for clickable areas */
     #tl{top:10px;left:30px;cursor:pointer;user-select:none;} 
-    #tr{top:10px;right:30px;text-align:right}
+    #tr{top:10px;right:30px;text-align:right;cursor:pointer;user-select:none;}
     #bl{bottom:10px;left:30px;cursor:pointer;user-select:none;} 
     #br{bottom:10px;right:30px;text-align:right}
 </style>
 </head>
 <body>
     <div id="tl" class="w"><div id="l-tl" class="l">...</div><div id="p-tl" class="p">...</div></div>
-    <div id="tr" class="w"><div class="l">Gold</div><div id="p-gd" class="p y">...</div></div>
+    <!-- Added ID to the label so JS can swap between "Gold" and "USD/INR" -->
+    <div id="tr" class="w"><div id="l-tr" class="l">Gold</div><div id="p-tr" class="p y">...</div></div>
     <div id="bl" class="w">
         <div id="bx-tmb"><div class="l">TMB</div><div id="p-tmb" class="p">...</div></div>
         <div id="bx-yld" class="row" style="display:none">
@@ -45,11 +46,9 @@
     const L=async()=>{try{await navigator.wakeLock.request('screen')}catch(e){}};
     L(); document.addEventListener('visibilitychange',()=>document.visibilityState==='visible'&&L());
 
-    // Yahoo (Args: Symbol, ID, Decimals, SmallFont, Gold, IsIndex)
-    // Yahoo (Args: Symbol, ID, Decimals, SmallFont, Gold, IsIndex)
-    async function Y(s, i, dec, sm, gd, idx) {
+    // Yahoo (Args: Symbol, ID, Decimals, SmallFont, FixedColor, IsIndex)
+    async function Y(s, i, dec, sm, fixColor, idx) {
         try {
-            // Added &t=${Date.now()} to the Yahoo URL to prevent proxy caching
             let targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${s}?interval=1d&t=${Date.now()}`;
             let r = await fetch('https://corsproxy.io/?' + encodeURIComponent(targetUrl));
             
@@ -57,18 +56,15 @@
             let p = M.regularMarketPrice, prev = M.chartPreviousClose;
             let txt = p.toLocaleString('en-US',{minimumFractionDigits:dec?2:0, maximumFractionDigits:dec?2:0});
             
-            // 1. Gold
-            if(gd) return P(i, txt);
+            // 1. Fixed Color bypass (Gold & USD/INR)
+            if(fixColor) return P(i, txt);
 
             // 2. Index (Nasdaq/Nifty)
             if(idx) {
                 let pct = ((p - prev) / prev) * 100;
                 let sign = pct >= 0 ? "+" : "";
                 
-                // Added brackets, used .sub class for right alignment and size
                 q(i).innerHTML = `${txt}<div class="sub">(${sign}${pct.toFixed(2)}%)</div>`;
-                
-                // Color based on Prev Close
                 q(i).className = `p ${p >= prev ? 'g' : 'r'}`;
                 return;
             }
@@ -94,27 +90,31 @@
         } catch(e){}
     }
 
-    // Time checker extracted to function
     const getIST = () => {
         let n=new Date(), u=n.getTime()+n.getTimezoneOffset()*6e4+198e5, d=new Date(u);
         let m=d.getHours()*60+d.getMinutes();
         return m>=510&&m<=1080;
     };
 
-    // State trackers for manual toggles (null = use time default)
-    let mTL = null, mBL = null;
+    // State trackers: mTR=false is Gold (default), mTR=true is USD/INR
+    let mTL = null, mBL = null, mTR = false;
 
     // Loop
     function run() {
         let ist = getIST();
-        // Determine state: use manual toggle if clicked, otherwise default to IST time block
         let stateTL = mTL !== null ? mTL : ist;
         let stateBL = mBL !== null ? mBL : ist;
 
+        // Top Left: Nifty / Nasdaq
         P('l-tl', stateTL ? 'Nifty' : 'Nasdaq');
         Y(stateTL ? '^NSEI' : '^IXIC', 'p-tl', 0, 0, 0, 1); 
-        Y('GC=F', 'p-gd', 0, 0, 1);
+        
+        // Top Right: Gold / USD-INR Toggle
+        P('l-tr', mTR ? 'USD/INR' : 'Gold');
+        // Passing 1 for dec if USD/INR (to get decimals like 83.45), 0 for Gold
+        Y(mTR ? 'INR=X' : 'GC=F', 'p-tr', mTR ? 1 : 0, 0, 1);
 
+        // Bottom Left: TMB / Yields
         q('bx-tmb').style.display = stateBL ? 'block' : 'none';
         q('bx-yld').style.display = stateBL ? 'none' : 'flex';
         
@@ -124,13 +124,19 @@
 
     // Click Listeners
     q('tl').onclick = () => { 
-        mTL = !(mTL !== null ? mTL : getIST()); // Toggle the current state
-        q('p-tl').innerHTML = '...'; // Quick visual feedback while loading
+        mTL = !(mTL !== null ? mTL : getIST()); 
+        q('p-tl').innerHTML = '...'; 
+        run(); 
+    };
+
+    q('tr').onclick = () => { 
+        mTR = !mTR; 
+        q('p-tr').innerText = '...'; 
         run(); 
     };
 
     q('bl').onclick = () => { 
-        mBL = !(mBL !== null ? mBL : getIST()); // Toggle the current state
+        mBL = !(mBL !== null ? mBL : getIST());
         q('p-tmb').innerText = '...'; q('p-10').innerText = '...'; q('p-30').innerText = '...';
         run(); 
     };
