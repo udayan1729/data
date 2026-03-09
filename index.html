@@ -90,7 +90,8 @@
 
 <script>
     const REFRESH_MS = 30_000;
-    const BTC_REFRESH_MS = 1_000;
+    const BTC_REF_REFRESH_MS = 60_000;  // refresh reference price every 60s
+    const BTC_WS_RECONNECT_MS = 5_000;
     const HISTORY_WINDOW_MS = 20 * 60_000;   // 20 min window for price history
     const HISTORY_COMPARE_MS = 15 * 60_000;  // compare against 15 min ago
     const IST_MARKET_OPEN = 510;   // 8:30 AM in minutes
@@ -208,23 +209,49 @@
         }
     }
 
-    async function fetchBitcoin() {
+    let btcRefPrice = null;
+    let btcWs = null;
+
+    async function fetchBtcRefPrice() {
+        try {
+            const klines = await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=16').then(r => r.json());
+            btcRefPrice = parseFloat(klines[0][4]);
+        } catch (err) {
+            console.warn('Binance klines fetch failed:', err);
+        }
+    }
+
+    function connectBtcWebSocket() {
+        if (btcWs) { btcWs.close(); btcWs = null; }
+        if (toggleBR) return;
+
+        const ws = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@miniTicker');
+        btcWs = ws;
+
+        ws.onmessage = (e) => {
+            if (toggleBR) return;
+            const price = parseFloat(JSON.parse(e.data).c); // miniTicker uses 'c' for close price
+            const ref = btcRefPrice ?? price;
+            setPrice('p-btc', Math.round(price).toLocaleString(), `p ${price >= ref ? 'g' : 'r'}`);
+        };
+
+        ws.onclose = () => {
+            if (btcWs === ws && !toggleBR) {
+                setTimeout(connectBtcWebSocket, BTC_WS_RECONNECT_MS);
+            }
+        };
+
+        ws.onerror = () => ws.close();
+    }
+
+    function showBtcView() {
         if (toggleBR) {
             setPrice('l-btc', 'BTC Dom');
             setPrice('p-btc', btcDominance, 'p y');
-            return;
-        }
-        try {
+            if (btcWs) { btcWs.close(); btcWs = null; }
+        } else {
             setPrice('l-btc', 'Bitcoin');
-            const [klines, ticker] = await Promise.all([
-                fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=16').then(r => r.json()),
-                fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT').then(r => r.json()),
-            ]);
-            const price = parseFloat(ticker.price);
-            const ref = parseFloat(klines[0][4]);
-            setPrice('p-btc', Math.round(price).toLocaleString(), `p ${price > ref ? 'g' : 'r'}`);
-        } catch (err) {
-            console.warn('Binance fetch failed:', err);
+            connectBtcWebSocket();
         }
     }
 
@@ -253,10 +280,11 @@
     $('tl').onclick = () => { overrideTL = !(overrideTL !== null ? overrideTL : isISTMarketHours()); $('p-tl').textContent = '...'; run(); };
     $('tr').onclick = () => { toggleTR = !toggleTR; $('p-tr').textContent = '...'; run(); };
     $('bl').onclick = () => { overrideBL = !(overrideBL !== null ? overrideBL : isISTMarketHours()); $('p-tmb').textContent = '...'; $('p-10').textContent = '...'; $('p-30').textContent = '...'; run(); };
-    $('br').onclick = () => { toggleBR = !toggleBR; $('p-btc').textContent = '...'; fetchBitcoin(); };
+    $('br').onclick = () => { toggleBR = !toggleBR; $('p-btc').textContent = '...'; showBtcView(); };
 
     setInterval(run, REFRESH_MS); run();
-    setInterval(fetchBitcoin, BTC_REFRESH_MS); fetchBitcoin();
+    fetchBtcRefPrice(); setInterval(fetchBtcRefPrice, BTC_REF_REFRESH_MS);
+    showBtcView();
     setInterval(fetchBtcDominance, REFRESH_MS); fetchBtcDominance();
 </script>
 </body>
