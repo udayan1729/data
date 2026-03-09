@@ -12,7 +12,7 @@
     /* Yields/Smaller numbers */
     .sm{font-size:50px;margin-top:5px}
     
-    /* Index Percentage: Smaller, Right Aligned */
+    /* Subtext for Change (Pct/Abs): Smaller, Right Aligned */
     .sub{font-size:30px;text-align:right;margin-top:5px;font-weight:normal;opacity:0.9}
 
     .row{display:flex;gap:40px}
@@ -46,8 +46,8 @@
     const L=async()=>{try{await navigator.wakeLock.request('screen')}catch(e){}};
     L(); document.addEventListener('visibilitychange',()=>document.visibilityState==='visible'&&L());
 
-    // Yahoo (Args: Symbol, ID, Decimals, SmallFont, FixedColor, IsIndex)
-    async function Y(s, i, dec, sm, fixColor, idx) {
+    // Yahoo (Args: Symbol, ID, Decimals, SmallFont, FixedColor, Mode: 1=Percentage, 2=Absolute Change)
+    async function Y(s, i, dec, sm, fixColor, mode) {
         try {
             let targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${s}?interval=1d&t=${Date.now()}`;
             let r = await fetch('https://corsproxy.io/?' + encodeURIComponent(targetUrl));
@@ -59,13 +59,14 @@
             // 1. Fixed Color bypass (Gold & USD/INR)
             if(fixColor) return P(i, txt);
 
-            // 2. Index (Nasdaq/Nifty)
-            if(idx) {
-                let pct = ((p - prev) / prev) * 100;
-                let sign = pct >= 0 ? "+" : "";
+            // 2. Change Tracking (Mode 1: Pct (Index), Mode 2: Abs Value (TMB))
+            if(mode) {
+                let diff = p - prev;
+                let sign = diff >= 0 ? "+" : "";
+                let val = mode === 1 ? (diff / prev * 100).toFixed(2) + "%" : diff.toFixed(2);
                 
-                q(i).innerHTML = `${txt}<div class="sub">(${sign}${pct.toFixed(2)}%)</div>`;
-                q(i).className = `p ${p >= prev ? 'g' : 'r'}`;
+                q(i).innerHTML = `${txt}<div class="sub">(${sign}${val})</div>`;
+                q(i).className = `p ${diff >= 0 ? 'g' : 'r'}`;
                 return;
             }
 
@@ -105,20 +106,20 @@
         let stateTL = mTL !== null ? mTL : ist;
         let stateBL = mBL !== null ? mBL : ist;
 
-        // Top Left: Nifty / Nasdaq
+        // Top Left: Nifty / Nasdaq (Mode 1 = Percentage)
         P('l-tl', stateTL ? 'Nifty' : 'Nasdaq');
         Y(stateTL ? '^NSEI' : '^IXIC', 'p-tl', 0, 0, 0, 1); 
         
         // Top Right: Gold / USD-INR Toggle
         P('l-tr', mTR ? 'USD/INR' : 'Gold');
-        // Passing 1 for dec if USD/INR (to get decimals like 83.45), 0 for Gold
         Y(mTR ? 'INR=X' : 'GC=F', 'p-tr', mTR ? 1 : 0, 0, 1);
 
         // Bottom Left: TMB / Yields
         q('bx-tmb').style.display = stateBL ? 'block' : 'none';
         q('bx-yld').style.display = stateBL ? 'none' : 'flex';
         
-        if(stateBL) Y('TMB.NS', 'p-tmb', 1, 0, 0); 
+        // TMB updated here (Mode 2 = Absolute Change)
+        if(stateBL) Y('TMB.NS', 'p-tmb', 1, 0, 0, 2); 
         else { Y('^TNX', 'p-10', 1, 1, 0); Y('^TYX', 'p-30', 1, 1, 0); }
     }
 
