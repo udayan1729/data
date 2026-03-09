@@ -46,7 +46,7 @@
     const L=async()=>{try{await navigator.wakeLock.request('screen')}catch(e){}};
     L(); document.addEventListener('visibilitychange',()=>document.visibilityState==='visible'&&L());
 
-    // Yahoo (Args: Symbol, ID, Decimals, SmallFont, FixedColor, Mode: 1=Percentage, 2=Absolute Change)
+    // Yahoo (Args: Symbol, ID, Decimals, SmallFont, FixedColor, Mode: 1=Abs & Pct, 2=Absolute Change)
     async function Y(s, i, dec, sm, fixColor, mode) {
         try {
             let targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${s}?interval=1d&t=${Date.now()}`;
@@ -59,13 +59,22 @@
             // 1. Fixed Color bypass (Gold & USD/INR)
             if(fixColor) return P(i, txt);
 
-            // 2. Change Tracking (Mode 1: Pct (Index), Mode 2: Abs Value (TMB))
+            // 2. Change Tracking (Mode 1: Abs & Pct (Nifty/Nasdaq), Mode 2: Abs Value (TMB))
             if(mode) {
                 let diff = p - prev;
                 let sign = diff >= 0 ? "+" : "";
-                let val = mode === 1 ? (diff / prev * 100).toFixed(2) + "%" : diff.toFixed(2);
+                let subText = "";
                 
-                q(i).innerHTML = `${txt}<div class="sub">(${sign}${val})</div>`;
+                if (mode === 1) {
+                    // For Nifty/Nasdaq: Value outside, percentage inside brackets
+                    let pct = (diff / prev * 100).toFixed(2);
+                    subText = `${sign}${diff.toFixed(2)} (${sign}${pct}%)`;
+                } else {
+                    // For TMB: Just absolute change inside brackets
+                    subText = `(${sign}${diff.toFixed(2)})`;
+                }
+                
+                q(i).innerHTML = `${txt}<div class="sub">${subText}</div>`;
                 q(i).className = `p ${diff >= 0 ? 'g' : 'r'}`;
                 return;
             }
@@ -106,7 +115,7 @@
         let stateTL = mTL !== null ? mTL : ist;
         let stateBL = mBL !== null ? mBL : ist;
 
-        // Top Left: Nifty / Nasdaq (Mode 1 = Percentage)
+        // Top Left: Nifty / Nasdaq (Mode 1 = Abs & Percentage)
         P('l-tl', stateTL ? 'Nifty' : 'Nasdaq');
         Y(stateTL ? '^NSEI' : '^IXIC', 'p-tl', 0, 0, 0, 1); 
         
