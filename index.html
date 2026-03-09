@@ -17,22 +17,22 @@
     .w { padding: 20px; cursor: pointer; user-select: none; }
     .l { font-size: 24px; color: #666; font-weight: bold; letter-spacing: 2px; text-transform: uppercase; }
     .p { font-size: 96px; font-weight: bold; line-height: 1; transition: color .5s; color: #fff; }
-    
+
     .sm { font-size: 50px; margin-top: 5px; }
     .sub { font-size: 30px; margin-top: 5px; font-weight: normal; opacity: 0.9; }
 
     .row { display: flex; gap: 40px; }
-    .g { color: #0ecb81!important; } 
-    .r { color: #f6465d!important; } 
+    .g { color: #0ecb81!important; }
+    .r { color: #f6465d!important; }
     .y { color: #FFD700!important; }
-    
+
     /* HORIZONTAL LAYOUT (Default Desktop & Landscape) */
     .w { position: fixed; }
     #tl { top: 10px; left: 30px; }
     #tr { top: 10px; right: 30px; text-align: right; }
     #bl { bottom: 10px; left: 30px; }
     #br { bottom: 10px; right: 30px; text-align: right; }
-    
+
     /* Fix subtext alignment based on placement */
     #tl .sub, #bl .sub { text-align: left; }
     #tr .sub, #br .sub { text-align: right; }
@@ -75,9 +75,9 @@
 </head>
 <body>
     <div id="tl" class="w"><div id="l-tl" class="l">...</div><div id="p-tl" class="p">...</div></div>
-    
+
     <div id="tr" class="w"><div id="l-tr" class="l">Gold</div><div id="p-tr" class="p y">...</div></div>
-    
+
     <div id="bl" class="w">
         <div id="bx-tmb"><div class="l">TMB</div><div id="p-tmb" class="p">...</div></div>
         <div id="bx-yld" class="row" style="display:none">
@@ -85,115 +85,179 @@
             <div><div class="l">30Y</div><div id="p-30" class="p sm">...</div></div>
         </div>
     </div>
-    
+
     <div id="br" class="w"><div id="l-btc" class="l">Bitcoin</div><div id="p-btc" class="p">...</div></div>
 
 <script>
-    const H={}, q=i=>document.getElementById(i);
-    const P=(i,t,c)=>{let e=q(i);e.innerText=t;if(c)e.className=c;};
+    const REFRESH_MS = 30_000;
+    const BTC_REFRESH_MS = 1_000;
+    const HISTORY_WINDOW_MS = 20 * 60_000;   // 20 min window for price history
+    const HISTORY_COMPARE_MS = 15 * 60_000;  // compare against 15 min ago
+    const IST_MARKET_OPEN = 510;   // 8:30 AM in minutes
+    const IST_MARKET_CLOSE = 1080; // 6:00 PM in minutes
+    const BTC_DOM_ADJUSTMENT = 1.04325;
+
+    const YAHOO_MODE = { CHANGE_PCT: 1, CHANGE_ABS: 2 };
+
+    const priceHistory = {};
+    const $ = id => document.getElementById(id);
+
+    function setPrice(id, text, className) {
+        const el = $(id);
+        el.textContent = text;
+        if (className) el.className = className;
+    }
+
+    function setPriceWithSub(id, priceText, subText, isUp) {
+        const el = $(id);
+        el.textContent = '';
+        el.appendChild(document.createTextNode(priceText));
+        const sub = document.createElement('div');
+        sub.className = 'sub';
+        sub.textContent = subText;
+        el.appendChild(sub);
+        el.className = `p ${isUp ? 'g' : 'r'}`;
+    }
 
     // Wake Lock
-    const L=async()=>{try{await navigator.wakeLock.request('screen')}catch(e){}};
-    L(); document.addEventListener('visibilitychange',()=>document.visibilityState==='visible'&&L());
+    async function requestWakeLock() {
+        try { await navigator.wakeLock.request('screen'); }
+        catch { /* unsupported or denied */ }
+    }
+    requestWakeLock();
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') requestWakeLock();
+    });
 
-    // Yahoo (Args: Symbol, ID, Decimals, SmallFont, FixedColor, Mode: 1=Abs & Pct, 2=Absolute Change)
-    async function Y(s, i, dec, sm, fixColor, mode) {
+    function isISTMarketHours() {
+        const ist = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+        const minutes = ist.getHours() * 60 + ist.getMinutes();
+        return minutes >= IST_MARKET_OPEN && minutes <= IST_MARKET_CLOSE;
+    }
+
+    function formatNumber(value, decimals) {
+        return value.toLocaleString('en-US', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+        });
+    }
+
+    async function fetchTreasury(symbol, id) {
         try {
-            let targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${s}?interval=1d&t=${Date.now()}`;
-            let r = await fetch('https://corsproxy.io/?' + encodeURIComponent(targetUrl));
-            
-            let d = await r.json(), M = d.chart.result[0].meta;
-            let p = M.regularMarketPrice, prev = M.chartPreviousClose;
-            let txt = p.toLocaleString('en-US',{minimumFractionDigits:dec?2:0, maximumFractionDigits:dec?2:0});
-            
-            if(fixColor) return P(i, txt);
+            const res = await fetch(`https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol?symbols=${symbol}&requestMethod=itv&no498498=1&partnerId=2&fund=1&exthrs=1&output=json`);
+            const data = await res.json();
+            const quote = data.FormattedQuoteResult.FormattedQuote[0];
+            const yield_ = parseFloat(quote.last);
+            const prevClose = parseFloat(quote.previous_day_closing);
+            setPrice(id, yield_.toFixed(2), `p sm ${yield_ >= prevClose ? 'g' : 'r'}`);
+        } catch (err) {
+            console.warn(`CNBC fetch failed for ${symbol}:`, err);
+        }
+    }
 
-            if(mode) {
-                let diff = p - prev;
-                let sign = diff >= 0 ? "+" : "";
-                let subText = "";
-                
-                if (mode === 1) {
-                    let pct = (diff / prev * 100).toFixed(2);
+    async function fetchYahoo(symbol, id, { decimals = 0, small = false, fixedColor = false, mode = 0 } = {}) {
+        try {
+            const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&t=${Date.now()}`;
+            const res = await fetch('https://corsproxy.io/?' + encodeURIComponent(targetUrl));
+            const data = await res.json();
+            const meta = data.chart.result[0].meta;
+            const price = meta.regularMarketPrice;
+            const prevClose = meta.chartPreviousClose;
+            const text = formatNumber(price, decimals ? 2 : 0);
+
+            if (fixedColor) return setPrice(id, text);
+
+            if (mode) {
+                const diff = price - prevClose;
+                const sign = diff >= 0 ? '+' : '';
+
+                let subText;
+                if (mode === YAHOO_MODE.CHANGE_PCT) {
+                    const pct = (diff / prevClose * 100).toFixed(2);
                     subText = `${sign}${diff.toFixed(2)} (${sign}${pct}%)`;
                 } else {
                     subText = `(${sign}${diff.toFixed(2)})`;
                 }
-                
-                q(i).innerHTML = `${txt}<div class="sub">${subText}</div>`;
-                q(i).className = `p ${diff >= 0 ? 'g' : 'r'}`;
+
+                setPriceWithSub(id, text, subText, diff >= 0);
                 return;
             }
 
-            let n = Date.now();
-            H[s] = (H[s]||[]).filter(x => n-x.t < 1.2e6); 
-            H[s].push({t:n, p});
-            let old = H[s].find(x => n-x.t >= 9e5); 
-            P(i, txt, `p ${sm?'sm':''} ${p>=(old?old.p:prev) ? 'g' : 'r'}`);
-        } catch(e){}
+            const now = Date.now();
+            priceHistory[symbol] = (priceHistory[symbol] || []).filter(x => now - x.t < HISTORY_WINDOW_MS);
+            priceHistory[symbol].push({ t: now, p: price });
+            const older = priceHistory[symbol].find(x => now - x.t >= HISTORY_COMPARE_MS);
+            const ref = older ? older.p : prevClose;
+            setPrice(id, text, `p ${small ? 'sm' : ''} ${price >= ref ? 'g' : 'r'}`);
+        } catch (err) {
+            console.warn(`Yahoo fetch failed for ${symbol}:`, err);
+        }
     }
 
-    let mTL = null, mBL = null, mTR = false, mBR = false;
-    let btcDom = '...';
+    let overrideTL = null, overrideBL = null, toggleTR = false, toggleBR = false;
+    let btcDominance = '...';
 
-    async function getDom(){ 
-        try{
-            let r = await fetch('https://api.coingecko.com/api/v3/global');
-            let data = await r.json();
-            btcDom = (parseFloat(data.data.market_cap_percentage.btc) * 1.04325).toFixed(2) + '%';
-            if(mBR) P('p-btc', btcDom);
-        }catch(e){ console.log("CG Fetch Err", e); } 
+    async function fetchBtcDominance() {
+        try {
+            const res = await fetch('https://api.coingecko.com/api/v3/global');
+            const data = await res.json();
+            btcDominance = (parseFloat(data.data.market_cap_percentage.btc) * BTC_DOM_ADJUSTMENT).toFixed(2) + '%';
+            if (toggleBR) setPrice('p-btc', btcDominance);
+        } catch (err) {
+            console.warn('CoinGecko fetch failed:', err);
+        }
     }
 
-    async function B() {
-        if (mBR) {
-            P('l-btc', 'BTC Dom');
-            P('p-btc', btcDom, 'p y');
+    async function fetchBitcoin() {
+        if (toggleBR) {
+            setPrice('l-btc', 'BTC Dom');
+            setPrice('p-btc', btcDominance, 'p y');
             return;
         }
         try {
-            P('l-btc', 'Bitcoin');
-            let [k, t] = await Promise.all([
-                fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=16').then(r=>r.json()),
-                fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT').then(r=>r.json())
+            setPrice('l-btc', 'Bitcoin');
+            const [klines, ticker] = await Promise.all([
+                fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=16').then(r => r.json()),
+                fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT').then(r => r.json()),
             ]);
-            let p = parseFloat(t.price), ref = parseFloat(k[0][4]);
-            P('p-btc', Math.round(p).toLocaleString(), `p ${p>ref?'g':'r'}`);
-        } catch(e){}
+            const price = parseFloat(ticker.price);
+            const ref = parseFloat(klines[0][4]);
+            setPrice('p-btc', Math.round(price).toLocaleString(), `p ${price > ref ? 'g' : 'r'}`);
+        } catch (err) {
+            console.warn('Binance fetch failed:', err);
+        }
     }
-
-    const getIST = () => {
-        let n=new Date(), u=n.getTime()+n.getTimezoneOffset()*6e4+198e5, d=new Date(u);
-        let m=d.getHours()*60+d.getMinutes();
-        return m>=510&&m<=1080;
-    };
 
     function run() {
-        let ist = getIST();
-        let stateTL = mTL !== null ? mTL : ist;
-        let stateBL = mBL !== null ? mBL : ist;
+        const ist = isISTMarketHours();
+        const showIndianTL = overrideTL !== null ? overrideTL : ist;
+        const showIndianBL = overrideBL !== null ? overrideBL : ist;
 
-        P('l-tl', stateTL ? 'Nifty' : 'Nasdaq');
-        Y(stateTL ? '^NSEI' : '^IXIC', 'p-tl', 0, 0, 0, 1); 
-        
-        P('l-tr', mTR ? 'USD/INR' : 'Gold');
-        Y(mTR ? 'INR=X' : 'GC=F', 'p-tr', mTR ? 1 : 0, 0, 1);
+        setPrice('l-tl', showIndianTL ? 'Nifty' : 'Nasdaq');
+        fetchYahoo(showIndianTL ? '^NSEI' : '^IXIC', 'p-tl', { mode: YAHOO_MODE.CHANGE_PCT });
 
-        q('bx-tmb').style.display = stateBL ? 'block' : 'none';
-        q('bx-yld').style.display = stateBL ? 'none' : 'flex';
-        
-        if(stateBL) Y('TMB.NS', 'p-tmb', 1, 0, 0, 2); 
-        else { Y('^TNX', 'p-10', 1, 1, 0); Y('^TYX', 'p-30', 1, 1, 0); }
+        setPrice('l-tr', toggleTR ? 'USD/INR' : 'Gold');
+        fetchYahoo(toggleTR ? 'INR=X' : 'GC=F', 'p-tr', { decimals: toggleTR ? 1 : 0, fixedColor: true });
+
+        $('bx-tmb').style.display = showIndianBL ? 'block' : 'none';
+        $('bx-yld').style.display = showIndianBL ? 'none' : 'flex';
+
+        if (showIndianBL) {
+            fetchYahoo('TMB.NS', 'p-tmb', { decimals: 1, mode: YAHOO_MODE.CHANGE_ABS });
+        } else {
+            fetchTreasury('US10Y', 'p-10');
+            fetchTreasury('US30Y', 'p-30');
+        }
     }
 
-    q('tl').onclick = () => { mTL = !(mTL !== null ? mTL : getIST()); q('p-tl').innerHTML = '...'; run(); };
-    q('tr').onclick = () => { mTR = !mTR; q('p-tr').innerText = '...'; run(); };
-    q('bl').onclick = () => { mBL = !(mBL !== null ? mBL : getIST()); q('p-tmb').innerText='...'; q('p-10').innerText='...'; q('p-30').innerText='...'; run(); };
-    q('br').onclick = () => { mBR = !mBR; q('p-btc').innerText = '...'; B(); };
+    $('tl').onclick = () => { overrideTL = !(overrideTL !== null ? overrideTL : isISTMarketHours()); $('p-tl').textContent = '...'; run(); };
+    $('tr').onclick = () => { toggleTR = !toggleTR; $('p-tr').textContent = '...'; run(); };
+    $('bl').onclick = () => { overrideBL = !(overrideBL !== null ? overrideBL : isISTMarketHours()); $('p-tmb').textContent = '...'; $('p-10').textContent = '...'; $('p-30').textContent = '...'; run(); };
+    $('br').onclick = () => { toggleBR = !toggleBR; $('p-btc').textContent = '...'; fetchBitcoin(); };
 
-    setInterval(run, 30000); run();
-    setInterval(B, 1000);    B();
-    setInterval(getDom, 30000); getDom(); 
+    setInterval(run, REFRESH_MS); run();
+    setInterval(fetchBitcoin, BTC_REFRESH_MS); fetchBitcoin();
+    setInterval(fetchBtcDominance, REFRESH_MS); fetchBtcDominance();
 </script>
 </body>
 </html>
