@@ -17,8 +17,12 @@
 
     .row{display:flex;gap:40px}
     .g{color:#0ecb81!important} .r{color:#f6465d!important} .y{color:#FFD700!important}
-    #tl{top:10px;left:30px} #tr{top:10px;right:30px;text-align:right}
-    #bl{bottom:10px;left:30px} #br{bottom:10px;right:30px;text-align:right}
+    
+    /* Added cursor pointers for clickable areas */
+    #tl{top:10px;left:30px;cursor:pointer;user-select:none;} 
+    #tr{top:10px;right:30px;text-align:right}
+    #bl{bottom:10px;left:30px;cursor:pointer;user-select:none;} 
+    #br{bottom:10px;right:30px;text-align:right}
 </style>
 </head>
 <body>
@@ -86,21 +90,46 @@
         } catch(e){}
     }
 
+    // Time checker extracted to function
+    const getIST = () => {
+        let n=new Date(), u=n.getTime()+n.getTimezoneOffset()*6e4+198e5, d=new Date(u);
+        let m=d.getHours()*60+d.getMinutes();
+        return m>=510&&m<=1080;
+    };
+
+    // State trackers for manual toggles (null = use time default)
+    let mTL = null, mBL = null;
+
     // Loop
     function run() {
-        let n=new Date(), u=n.getTime()+n.getTimezoneOffset()*6e4+198e5, d=new Date(u);
-        let m=d.getHours()*60+d.getMinutes(), ist=m>=510&&m<=1080;
+        let ist = getIST();
+        // Determine state: use manual toggle if clicked, otherwise default to IST time block
+        let stateTL = mTL !== null ? mTL : ist;
+        let stateBL = mBL !== null ? mBL : ist;
 
-        P('l-tl', ist ? 'Nifty' : 'Nasdaq');
-        Y(ist ? '^NSEI' : '^IXIC', 'p-tl', 0, 0, 0, 1); // Index Mode = 1
+        P('l-tl', stateTL ? 'Nifty' : 'Nasdaq');
+        Y(stateTL ? '^NSEI' : '^IXIC', 'p-tl', 0, 0, 0, 1); 
         Y('GC=F', 'p-gd', 0, 0, 1);
 
-        q('bx-tmb').style.display = ist ? 'block' : 'none';
-        q('bx-yld').style.display = ist ? 'none' : 'flex';
+        q('bx-tmb').style.display = stateBL ? 'block' : 'none';
+        q('bx-yld').style.display = stateBL ? 'none' : 'flex';
         
-        if(ist) Y('TMB.NS', 'p-tmb', 1, 0, 0); 
+        if(stateBL) Y('TMB.NS', 'p-tmb', 1, 0, 0); 
         else { Y('^TNX', 'p-10', 1, 1, 0); Y('^TYX', 'p-30', 1, 1, 0); }
     }
+
+    // Click Listeners
+    q('tl').onclick = () => { 
+        mTL = !(mTL !== null ? mTL : getIST()); // Toggle the current state
+        q('p-tl').innerHTML = '...'; // Quick visual feedback while loading
+        run(); 
+    };
+
+    q('bl').onclick = () => { 
+        mBL = !(mBL !== null ? mBL : getIST()); // Toggle the current state
+        q('p-tmb').innerText = '...'; q('p-10').innerText = '...'; q('p-30').innerText = '...';
+        run(); 
+    };
 
     setInterval(run, 5000); run();
     setInterval(B, 100);    B();
