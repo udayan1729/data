@@ -4,31 +4,80 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Market</title>
 <style>
-    body{background:#000;color:#fff;font-family:'Courier New',monospace;margin:0;height:100vh;overflow:hidden}
-    .w{position:fixed;padding:20px}
-    .l{font-size:24px;color:#666;font-weight:bold;letter-spacing:2px;text-transform:uppercase}
-    .p{font-size:96px;font-weight:bold;line-height:1;transition:color .5s;color:#fff}
+    /* BASE STYLES */
+    body {
+        background: #000;
+        color: #fff;
+        font-family: 'Courier New', monospace;
+        margin: 0;
+        height: 100vh;
+        height: 100dvh; /* Prevents mobile URL bar from cutting off the bottom */
+        overflow: hidden;
+    }
+    .w { padding: 20px; cursor: pointer; user-select: none; }
+    .l { font-size: 24px; color: #666; font-weight: bold; letter-spacing: 2px; text-transform: uppercase; }
+    .p { font-size: 96px; font-weight: bold; line-height: 1; transition: color .5s; color: #fff; }
     
-    /* Yields/Smaller numbers */
-    .sm{font-size:50px;margin-top:5px}
-    
-    /* Subtext for Change (Pct/Abs): Smaller, Right Aligned */
-    .sub{font-size:30px;text-align:right;margin-top:5px;font-weight:normal;opacity:0.9}
+    .sm { font-size: 50px; margin-top: 5px; }
+    .sub { font-size: 30px; margin-top: 5px; font-weight: normal; opacity: 0.9; }
 
-    .row{display:flex;gap:40px}
-    .g{color:#0ecb81!important} .r{color:#f6465d!important} .y{color:#FFD700!important}
+    .row { display: flex; gap: 40px; }
+    .g { color: #0ecb81!important; } 
+    .r { color: #f6465d!important; } 
+    .y { color: #FFD700!important; }
     
-    /* Added cursor pointers for clickable areas */
-    #tl{top:10px;left:30px;cursor:pointer;user-select:none;} 
-    #tr{top:10px;right:30px;text-align:right;cursor:pointer;user-select:none;}
-    #bl{bottom:10px;left:30px;cursor:pointer;user-select:none;} 
-    #br{bottom:10px;right:30px;text-align:right;cursor:pointer;user-select:none;}
+    /* HORIZONTAL LAYOUT (Default Desktop & Landscape) */
+    .w { position: fixed; }
+    #tl { top: 10px; left: 30px; }
+    #tr { top: 10px; right: 30px; text-align: right; }
+    #bl { bottom: 10px; left: 30px; }
+    #br { bottom: 10px; right: 30px; text-align: right; }
+    
+    /* Fix subtext alignment based on placement */
+    #tl .sub, #bl .sub { text-align: left; }
+    #tr .sub, #br .sub { text-align: right; }
+
+    /* VERTICAL LAYOUT (Portrait Mode on Phones) */
+    @media (orientation: portrait) {
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-evenly;
+            align-items: center;
+        }
+        .w {
+            position: static;
+            padding: 0;
+            width: 100%;
+            text-align: center !important;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        /* Dynamic viewport width sizing so it never overlaps edges */
+        .l { font-size: 5vw; }
+        .p { font-size: 16vw; }
+        .sm { font-size: 12vw; }
+        .sub { font-size: 5vw; text-align: center !important; }
+        .row { justify-content: center; gap: 10vw; }
+    }
+
+    /* RESPONSIVE LANDSCAPE (For sideways phones so fonts aren't too massive) */
+    @media (orientation: landscape) and (max-height: 600px) {
+        .w { padding: 15px; }
+        .l { font-size: 4vh; }
+        .p { font-size: 18vh; }
+        .sm { font-size: 12vh; }
+        .sub { font-size: 6vh; }
+        .row { gap: 4vw; }
+    }
 </style>
 </head>
 <body>
     <div id="tl" class="w"><div id="l-tl" class="l">...</div><div id="p-tl" class="p">...</div></div>
-    <!-- Added ID to the label so JS can swap between "Gold" and "USD/INR" -->
+    
     <div id="tr" class="w"><div id="l-tr" class="l">Gold</div><div id="p-tr" class="p y">...</div></div>
+    
     <div id="bl" class="w">
         <div id="bx-tmb"><div class="l">TMB</div><div id="p-tmb" class="p">...</div></div>
         <div id="bx-yld" class="row" style="display:none">
@@ -36,7 +85,7 @@
             <div><div class="l">30Y</div><div id="p-30" class="p sm">...</div></div>
         </div>
     </div>
-    <!-- Added ID l-btc to toggle text -->
+    
     <div id="br" class="w"><div id="l-btc" class="l">Bitcoin</div><div id="p-btc" class="p">...</div></div>
 
 <script>
@@ -57,10 +106,8 @@
             let p = M.regularMarketPrice, prev = M.chartPreviousClose;
             let txt = p.toLocaleString('en-US',{minimumFractionDigits:dec?2:0, maximumFractionDigits:dec?2:0});
             
-            // 1. Fixed Color bypass (Gold & USD/INR)
             if(fixColor) return P(i, txt);
 
-            // 2. Change Tracking (Mode 1: Abs & Pct (Nifty/Nasdaq), Mode 2: Abs Value (TMB))
             if(mode) {
                 let diff = p - prev;
                 let sign = diff >= 0 ? "+" : "";
@@ -78,34 +125,30 @@
                 return;
             }
 
-            // 3. Others (History based color)
             let n = Date.now();
-            H[s] = (H[s]||[]).filter(x => n-x.t < 1.2e6); // Keep 20m
+            H[s] = (H[s]||[]).filter(x => n-x.t < 1.2e6); 
             H[s].push({t:n, p});
-            let old = H[s].find(x => n-x.t >= 9e5); // Find 15m
+            let old = H[s].find(x => n-x.t >= 9e5); 
             P(i, txt, `p ${sm?'sm':''} ${p>=(old?old.p:prev) ? 'g' : 'r'}`);
         } catch(e){}
     }
 
-    // State trackers: mTR=false is Gold (default), mBR=false is BTC Price (default)
     let mTL = null, mBL = null, mTR = false, mBR = false;
     let btcDom = '...';
 
-    // CoinGecko Fetch for Dominance
     async function getDom(){ 
         try{
             let r = await fetch('https://api.coingecko.com/api/v3/global');
             let data = await r.json();
             btcDom = (parseFloat(data.data.market_cap_percentage.btc) * 1.04325).toFixed(2) + '%';
-            if(mBR) P('p-btc', btcDom); // Instantly update view if active
+            if(mBR) P('p-btc', btcDom);
         }catch(e){ console.log("CG Fetch Err", e); } 
     }
 
-    // Bitcoin & Dominance
     async function B() {
         if (mBR) {
             P('l-btc', 'BTC Dom');
-            P('p-btc', btcDom, 'p y'); // Use 'p y' for yellow or just 'p' for white
+            P('p-btc', btcDom, 'p y');
             return;
         }
         try {
@@ -125,21 +168,17 @@
         return m>=510&&m<=1080;
     };
 
-    // Loop
     function run() {
         let ist = getIST();
         let stateTL = mTL !== null ? mTL : ist;
         let stateBL = mBL !== null ? mBL : ist;
 
-        // Top Left: Nifty / Nasdaq
         P('l-tl', stateTL ? 'Nifty' : 'Nasdaq');
         Y(stateTL ? '^NSEI' : '^IXIC', 'p-tl', 0, 0, 0, 1); 
         
-        // Top Right: Gold / USD-INR Toggle
         P('l-tr', mTR ? 'USD/INR' : 'Gold');
         Y(mTR ? 'INR=X' : 'GC=F', 'p-tr', mTR ? 1 : 0, 0, 1);
 
-        // Bottom Left: TMB / Yields
         q('bx-tmb').style.display = stateBL ? 'block' : 'none';
         q('bx-yld').style.display = stateBL ? 'none' : 'flex';
         
@@ -147,35 +186,14 @@
         else { Y('^TNX', 'p-10', 1, 1, 0); Y('^TYX', 'p-30', 1, 1, 0); }
     }
 
-    // Click Listeners
-    q('tl').onclick = () => { 
-        mTL = !(mTL !== null ? mTL : getIST()); 
-        q('p-tl').innerHTML = '...'; 
-        run(); 
-    };
+    q('tl').onclick = () => { mTL = !(mTL !== null ? mTL : getIST()); q('p-tl').innerHTML = '...'; run(); };
+    q('tr').onclick = () => { mTR = !mTR; q('p-tr').innerText = '...'; run(); };
+    q('bl').onclick = () => { mBL = !(mBL !== null ? mBL : getIST()); q('p-tmb').innerText='...'; q('p-10').innerText='...'; q('p-30').innerText='...'; run(); };
+    q('br').onclick = () => { mBR = !mBR; q('p-btc').innerText = '...'; B(); };
 
-    q('tr').onclick = () => { 
-        mTR = !mTR; 
-        q('p-tr').innerText = '...'; 
-        run(); 
-    };
-
-    q('bl').onclick = () => { 
-        mBL = !(mBL !== null ? mBL : getIST());
-        q('p-tmb').innerText = '...'; q('p-10').innerText = '...'; q('p-30').innerText = '...';
-        run(); 
-    };
-
-    q('br').onclick = () => { 
-        mBR = !mBR; 
-        q('p-btc').innerText = '...'; 
-        B(); 
-    };
-
-    // Initializations and Timers
     setInterval(run, 30000); run();
     setInterval(B, 1000);    B();
-    setInterval(getDom, 30000); getDom(); // Fetch CG every 60s
+    setInterval(getDom, 30000); getDom(); 
 </script>
 </body>
 </html>
